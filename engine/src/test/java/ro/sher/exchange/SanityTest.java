@@ -1,10 +1,11 @@
-package engine.src.test.java.ro.sher.exchange;
+package ro.sher.exchange;
 
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class SanityTest{
     @Test
     public void firstTest(){
-        System.out.print("Test for verifying maven build." + "\n");
+        assertEquals(2, 1 + 1, "it's not okay.");
     }
 }

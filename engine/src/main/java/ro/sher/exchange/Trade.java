@@ -9,5 +9,9 @@ public record Trade(long buyOrderId, long sellOrderId, long price, long quantity
         if(quantity <= 0){
             throw new IllegalArgumentException("Quantity must be strictly positive.");
         }
+
+        if(buyOrderId == sellOrderId){
+            throw new IllegalArgumentException("Order Buy Id and Sell Id must not be equal.");
+        }
     }
 }

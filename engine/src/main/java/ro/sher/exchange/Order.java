@@ -27,7 +27,7 @@ public class Order{
             throw new IllegalArgumentException("Side has to be non-null of the Side enum.");
         }
 
-        if(traderId == null){
+        if(traderId == null || traderId.isBlank()){
             throw new IllegalArgumentException("The trader's Id must not be null.");
         }
 

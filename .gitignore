@@ -1,3 +1,5 @@
 *.log
 
 target/
+# note personale pentru Claude Code, nu intra in repo-ul public
+CLAUDE.md

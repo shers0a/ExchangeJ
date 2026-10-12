@@ -5,6 +5,9 @@ import java.util.TreeMap;
 import java.util.Comparator;
 import java.util.OptionalLong;
 import java.util.Map;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.function.BooleanSupplier;
 
 public class OrderBook{
     private final TreeMap<Long, ArrayDeque<Order>> bids = new TreeMap<>(Comparator.reverseOrder());
@@ -20,7 +23,8 @@ public class OrderBook{
         this.symbol = symbol;
     }
 
-    public void placeLimitOrder(long id, String traderId, Side side, long price, long quantity){
+    public List<Trade> placeLimitOrder(long id, String traderId, Side side, long price, long quantity){
+        List<Trade> trades = new ArrayList<>();
         Order order = new Order(price, symbol, side, quantity, nextSequence++, id, traderId);
 
         switch(side){
@@ -32,6 +36,27 @@ public class OrderBook{
                 asks.computeIfAbsent(price, p -> new ArrayDeque<>()).addLast(order);
             }
         }
+
+        return trades;
+    }
+
+    private List<Trade> matchEngine(Order next){
+        List<Trade> trades = new ArrayList<>();
+        
+        TreeMap <Long, ArrayDeque<Order>> other= switch(next.getSide()){
+            case BUY -> asks;
+            case SELL -> bids;
+        };
+        
+        BooleanSupplier crosses = () -> next.getSide() == Side.BUY
+            ? other.firstKey() <= next.getPrice()
+            : other.firstKey() >= next.getPrice();
+
+        while(next.getRemainingQuantity() > 0 && other.isEmpty() == false && crosses.getAsBoolean() ){
+
+        }
+        
+        return trades;
     }
 
     public OptionalLong bestBid(){

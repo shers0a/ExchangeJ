@@ -45,7 +45,7 @@ public class OrderBookTest{
         orderBook.placeLimitOrder(123, "john", SELL, 20, 100);
         
         assertTrue(orderBook.bestBid().isEmpty());
-        assertEquals(OptionalLong.of(20) ,orderBook.bestAsk(), "The bestAsk() method does not work.");
+        assertEquals(OptionalLong.of(20), orderBook.bestAsk(), "The bestAsk() method does not work.");
     }
 
     @Test

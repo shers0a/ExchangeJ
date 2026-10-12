@@ -3,6 +3,8 @@ package ro.sher.exchange;
 import java.util.ArrayDeque;
 import java.util.TreeMap;
 import java.util.Comparator;
+import java.util.OptionalLong;
+import java.util.Map;
 
 public class OrderBook{
     private final TreeMap<Long, ArrayDeque<Order>> bids = new TreeMap<>(Comparator.reverseOrder());
@@ -22,13 +24,31 @@ public class OrderBook{
         Order order = new Order(price, symbol, side, quantity, nextSequence++, id, traderId);
 
         switch(side){
-            case BUY:
+            case BUY -> {
                 bids.computeIfAbsent(price, p -> new ArrayDeque<>()).addLast(order);
-                break;
+            }
 
-            case SELL:
+            case SELL -> {
                 asks.computeIfAbsent(price, p -> new ArrayDeque<>()).addLast(order);
-                break;
-        }       
+            }
+        }
+    }
+
+    public OptionalLong bestBid(){
+        Map.Entry<Long, ArrayDeque<Order>> entry = bids.firstEntry();
+        
+        if(entry == null)
+            return OptionalLong.empty();
+        
+        return OptionalLong.of(entry.getKey());
+    }
+
+    public OptionalLong bestAsk(){
+        Map.Entry<Long, ArrayDeque<Order>> entry = asks.firstEntry();
+
+        if(entry == null)
+            return OptionalLong.empty();
+        
+        return OptionalLong.of(entry.getKey());
     }
 }

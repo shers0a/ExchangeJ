@@ -12,6 +12,9 @@ import java.util.HashMap;
 import java.util.Optional;
 
 public class OrderBook{
+    private static final long MARKET_BUY_PRICE = Long.MAX_VALUE;
+    private static final long MARKET_SELL_PRICE = 1;
+
     private final TreeMap<Long, ArrayDeque<Order>> bids = new TreeMap<>(Comparator.reverseOrder());
     private final TreeMap<Long, ArrayDeque<Order>> asks = new TreeMap<>();
     private final String symbol;
@@ -27,12 +30,12 @@ public class OrderBook{
     }
 
     public List<Trade> placeLimitOrder(long id, String traderId, Side side, long price, long quantity){
+        requireUniqueId(id);
         Order order = new Order(price, symbol, side, quantity, nextSequence++, id, traderId);
 
         var trades = matchEngine(order);
 
         if( order.getRemainingQuantity() != 0 ){
-            
             ordersById.put(order.getId(), order);
 
             switch(side){
@@ -47,6 +50,20 @@ public class OrderBook{
         }
 
         return trades;
+    }
+
+    public List<Trade> placeMarketOrder(long id, String traderId, Side side, long quantity){
+        requireUniqueId(id);
+        long price = side == Side.BUY ? MARKET_BUY_PRICE : MARKET_SELL_PRICE;
+        Order order = new Order(price, symbol, side, quantity, nextSequence++, id, traderId);
+
+        return matchEngine(order);
+    }
+
+    private void requireUniqueId(long id){
+        if(ordersById.containsKey(id)){
+            throw new IllegalArgumentException("An order with this id already exists.");
+        }
     }
 
     private List<Trade> matchEngine(Order next){

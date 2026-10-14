@@ -315,4 +315,88 @@ public class OrderBookTest{
         assertTrue(orderBook.cancel(1).isPresent());
         assertTrue(orderBook.cancel(1).isEmpty());
     }
+
+    @Test
+    public void rejectsDuplicateIdWithoutTouchingTheBook(){
+        OrderBook orderBook = new OrderBook("ACME");
+
+        orderBook.placeLimitOrder(1, "ana", BUY, 100, 10);
+
+        assertThrows(IllegalArgumentException.class,
+        () -> orderBook.placeLimitOrder(1, "bogdan", SELL, 100, 10));
+
+        // the rejected SELL must not have traded with the resting BUY
+        assertEquals(OptionalLong.of(100), orderBook.bestBid());
+        assertTrue(orderBook.bestAsk().isEmpty());
+        assertEquals(10, orderBook.cancel(1).orElseThrow().getRemainingQuantity());
+    }
+
+    @Test
+    public void marketBuySweepsAsksFromLowestPrice(){
+        OrderBook orderBook = new OrderBook("ACME");
+
+        orderBook.placeLimitOrder(1, "bogdan", SELL, 105, 50);
+        orderBook.placeLimitOrder(2, "cristi", SELL, 100, 30);
+        List<Trade> trades = orderBook.placeMarketOrder(3, "ana", BUY, 60);
+
+        assertEquals(List.of(
+            new Trade(3, 2, 100, 30),
+            new Trade(3, 1, 105, 30)
+        ), trades);
+        assertEquals(OptionalLong.of(105), orderBook.bestAsk());
+        assertTrue(orderBook.bestBid().isEmpty());
+    }
+
+    @Test
+    public void marketSellSweepsBidsFromHighestPrice(){
+        OrderBook orderBook = new OrderBook("ACME");
+
+        orderBook.placeLimitOrder(1, "ana", BUY, 99, 50);
+        orderBook.placeLimitOrder(2, "dan", BUY, 101, 30);
+        List<Trade> trades = orderBook.placeMarketOrder(3, "bogdan", SELL, 60);
+
+        assertEquals(List.of(
+            new Trade(2, 3, 101, 30),
+            new Trade(1, 3, 99, 30)
+        ), trades);
+        assertEquals(OptionalLong.of(99), orderBook.bestBid());
+        assertTrue(orderBook.bestAsk().isEmpty());
+    }
+
+    @Test
+    public void marketOrderRemainderDoesNotRest(){
+        OrderBook orderBook = new OrderBook("ACME");
+
+        orderBook.placeLimitOrder(1, "bogdan", SELL, 100, 30);
+        List<Trade> trades = orderBook.placeMarketOrder(2, "ana", BUY, 100);
+
+        assertEquals(List.of(new Trade(2, 1, 100, 30)), trades);
+        assertTrue(orderBook.bestBid().isEmpty());
+        assertTrue(orderBook.bestAsk().isEmpty());
+        assertTrue(orderBook.cancel(2).isEmpty());
+    }
+
+    @Test
+    public void marketOrderOnEmptyBookProducesNoTrades(){
+        OrderBook orderBook = new OrderBook("ACME");
+
+        assertTrue(orderBook.placeMarketOrder(1, "ana", BUY, 10).isEmpty());
+        assertTrue(orderBook.bestBid().isEmpty());
+        assertTrue(orderBook.bestAsk().isEmpty());
+    }
+
+    @Test
+    public void marketOrderRejectsInvalidInput(){
+        OrderBook orderBook = new OrderBook("ACME");
+
+        orderBook.placeLimitOrder(1, "bogdan", SELL, 100, 10);
+
+        assertThrows(IllegalArgumentException.class,
+        () -> orderBook.placeMarketOrder(2, "ana", BUY, 0));
+        assertThrows(IllegalArgumentException.class,
+        () -> orderBook.placeMarketOrder(3, "ana", null, 10));
+        assertThrows(IllegalArgumentException.class,
+        () -> orderBook.placeMarketOrder(1, "ana", BUY, 10));
+        assertEquals(OptionalLong.of(100), orderBook.bestAsk());
+    }
 }

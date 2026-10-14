@@ -53,7 +53,27 @@ public class OrderBook{
             : other.firstKey() >= next.getPrice();
 
         while(next.getRemainingQuantity() > 0 && other.isEmpty() == false && crosses.getAsBoolean() ){
+            Map.Entry<Long, ArrayDeque<Order>> bestLevel = other.firstEntry();
+            ArrayDeque<Order> queue = bestLevel.getValue();
+            Order resting = queue.peekFirst();
 
+            long tradeQuantity = Math.min(next.getRemainingQuantity(), resting.getRemainingQuantity());
+            long tradePrice = bestLevel.getKey();
+
+            next.fill(tradeQuantity);
+            resting.fill(tradeQuantity);
+
+            long buyOrderId = next.getSide() == Side.BUY ? next.getId() : resting.getId();
+            long sellOrderId = next.getSide() == Side.SELL ? next.getId() : resting.getId();
+            trades.add(new Trade(buyOrderId, sellOrderId, tradePrice, tradeQuantity));
+
+            if(resting.getRemainingQuantity() == 0){
+                queue.pollFirst();
+
+                if(queue.isEmpty()){
+                    other.pollFirstEntry();
+                }
+            }
         }
         
         return trades;

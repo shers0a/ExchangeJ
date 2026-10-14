@@ -3,6 +3,7 @@ package ro.sher.exchange;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 import static ro.sher.exchange.Side.*;
+import java.util.List;
 import java.util.OptionalLong;
 
 public class OrderBookTest{
@@ -72,5 +73,162 @@ public class OrderBookTest{
         
         assertEquals(OptionalLong.empty(),
         orderBook.bestAsk());
+    }
+
+    @Test
+    public void matchesBuyAgainstSellAtSamePrice(){
+        OrderBook orderBook = new OrderBook("ACME");
+
+        orderBook.placeLimitOrder(1, "bogdan", SELL, 100, 10);
+        List<Trade> trades = orderBook.placeLimitOrder(2, "ana", BUY, 100, 10);
+
+        assertEquals(List.of(new Trade(2, 1, 100, 10)), trades);
+        assertTrue(orderBook.bestBid().isEmpty());
+        assertTrue(orderBook.bestAsk().isEmpty());
+    }
+
+    @Test
+    public void fullyFilledOrderDoesNotRestInBook(){
+        OrderBook orderBook = new OrderBook("ACME");
+
+        orderBook.placeLimitOrder(1, "bogdan", SELL, 100, 10);
+        orderBook.placeLimitOrder(2, "ana", BUY, 100, 10);
+        List<Trade> trades = orderBook.placeLimitOrder(3, "cristi", SELL, 100, 5);
+
+        assertTrue(trades.isEmpty());
+        assertTrue(orderBook.bestBid().isEmpty());
+        assertEquals(OptionalLong.of(100), orderBook.bestAsk());
+    }
+
+    @Test
+    public void noTradeWhenPricesDoNotCross(){
+        OrderBook orderBook = new OrderBook("ACME");
+
+        orderBook.placeLimitOrder(1, "bogdan", SELL, 100, 10);
+        List<Trade> trades = orderBook.placeLimitOrder(2, "ana", BUY, 99, 10);
+
+        assertTrue(trades.isEmpty());
+        assertEquals(OptionalLong.of(99), orderBook.bestBid());
+        assertEquals(OptionalLong.of(100), orderBook.bestAsk());
+    }
+
+    @Test
+    public void incomingOrderPartiallyFilledRestsWithRemainder(){
+        OrderBook orderBook = new OrderBook("ACME");
+
+        orderBook.placeLimitOrder(1, "bogdan", SELL, 100, 30);
+        List<Trade> trades = orderBook.placeLimitOrder(2, "ana", BUY, 100, 100);
+
+        assertEquals(List.of(new Trade(2, 1, 100, 30)), trades);
+        assertEquals(OptionalLong.of(100), orderBook.bestBid());
+        assertTrue(orderBook.bestAsk().isEmpty());
+
+        // the remaining 70 must still be in the book
+        List<Trade> next = orderBook.placeLimitOrder(3, "cristi", SELL, 100, 100);
+
+        assertEquals(List.of(new Trade(2, 3, 100, 70)), next);
+        assertTrue(orderBook.bestBid().isEmpty());
+        assertEquals(OptionalLong.of(100), orderBook.bestAsk());
+    }
+
+    @Test
+    public void restingOrderPartiallyFilledKeepsItsPlace(){
+        OrderBook orderBook = new OrderBook("ACME");
+
+        orderBook.placeLimitOrder(1, "bogdan", SELL, 100, 100);
+        orderBook.placeLimitOrder(2, "ana", BUY, 100, 30);
+        List<Trade> trades = orderBook.placeLimitOrder(3, "cristi", BUY, 100, 70);
+
+        assertEquals(List.of(new Trade(3, 1, 100, 70)), trades);
+        assertTrue(orderBook.bestAsk().isEmpty());
+        assertTrue(orderBook.bestBid().isEmpty());
+    }
+
+    @Test
+    public void buySweepsMultipleAskLevelsFromLowestPrice(){
+        OrderBook orderBook = new OrderBook("ACME");
+
+        orderBook.placeLimitOrder(1, "bogdan", SELL, 101, 50);
+        orderBook.placeLimitOrder(2, "cristi", SELL, 100, 30);
+        List<Trade> trades = orderBook.placeLimitOrder(3, "ana", BUY, 101, 100);
+
+        assertEquals(List.of(
+            new Trade(3, 2, 100, 30),
+            new Trade(3, 1, 101, 50)
+        ), trades);
+        assertEquals(OptionalLong.of(101), orderBook.bestBid());
+        assertTrue(orderBook.bestAsk().isEmpty());
+    }
+
+    @Test
+    public void buyDoesNotMatchAboveItsLimitPrice(){
+        OrderBook orderBook = new OrderBook("ACME");
+
+        orderBook.placeLimitOrder(1, "bogdan", SELL, 100, 30);
+        orderBook.placeLimitOrder(2, "cristi", SELL, 102, 50);
+        List<Trade> trades = orderBook.placeLimitOrder(3, "ana", BUY, 101, 100);
+
+        assertEquals(List.of(new Trade(3, 1, 100, 30)), trades);
+        assertEquals(OptionalLong.of(101), orderBook.bestBid());
+        assertEquals(OptionalLong.of(102), orderBook.bestAsk());
+    }
+
+    @Test
+    public void ordersAtSamePriceAreFilledInArrivalOrder(){
+        OrderBook orderBook = new OrderBook("ACME");
+
+        orderBook.placeLimitOrder(1, "bogdan", SELL, 100, 10);
+        orderBook.placeLimitOrder(2, "cristi", SELL, 100, 10);
+        List<Trade> first = orderBook.placeLimitOrder(3, "ana", BUY, 100, 10);
+        List<Trade> second = orderBook.placeLimitOrder(4, "dan", BUY, 100, 10);
+
+        assertEquals(List.of(new Trade(3, 1, 100, 10)), first);
+        assertEquals(List.of(new Trade(4, 2, 100, 10)), second);
+    }
+
+    @Test
+    public void incomingBuyTradesAtRestingSellPrice(){
+        OrderBook orderBook = new OrderBook("ACME");
+
+        orderBook.placeLimitOrder(1, "bogdan", SELL, 99, 10);
+        List<Trade> trades = orderBook.placeLimitOrder(2, "ana", BUY, 101, 10);
+
+        assertEquals(99, trades.get(0).price());
+    }
+
+    @Test
+    public void incomingSellTradesAtRestingBuyPrice(){
+        OrderBook orderBook = new OrderBook("ACME");
+
+        orderBook.placeLimitOrder(1, "ana", BUY, 101, 10);
+        List<Trade> trades = orderBook.placeLimitOrder(2, "bogdan", SELL, 99, 10);
+
+        assertEquals(101, trades.get(0).price());
+    }
+
+    @Test
+    public void sellSweepsMultipleBidLevelsFromHighestPrice(){
+        OrderBook orderBook = new OrderBook("ACME");
+
+        orderBook.placeLimitOrder(1, "ana", BUY, 100, 50);
+        orderBook.placeLimitOrder(2, "dan", BUY, 101, 30);
+        List<Trade> trades = orderBook.placeLimitOrder(3, "bogdan", SELL, 99, 100);
+
+        assertEquals(List.of(
+            new Trade(2, 3, 101, 30),
+            new Trade(1, 3, 100, 50)
+        ), trades);
+        assertTrue(orderBook.bestBid().isEmpty());
+        assertEquals(OptionalLong.of(99), orderBook.bestAsk());
+    }
+
+    @Test
+    public void rejectsInvalidOrder(){
+        OrderBook orderBook = new OrderBook("ACME");
+
+        assertThrows(IllegalArgumentException.class,
+        () -> orderBook.placeLimitOrder(1, "ana", BUY, 0, 10));
+        assertThrows(IllegalArgumentException.class,
+        () -> orderBook.placeLimitOrder(2, "ana", BUY, 100, 0));
     }
 }

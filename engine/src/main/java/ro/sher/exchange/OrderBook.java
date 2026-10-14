@@ -24,16 +24,19 @@ public class OrderBook{
     }
 
     public List<Trade> placeLimitOrder(long id, String traderId, Side side, long price, long quantity){
-        List<Trade> trades = new ArrayList<>();
         Order order = new Order(price, symbol, side, quantity, nextSequence++, id, traderId);
 
-        switch(side){
-            case BUY -> {
-                bids.computeIfAbsent(price, p -> new ArrayDeque<>()).addLast(order);
-            }
+        var trades = matchEngine(order);
 
-            case SELL -> {
-                asks.computeIfAbsent(price, p -> new ArrayDeque<>()).addLast(order);
+        if( order.getRemainingQuantity() != 0 ){
+            switch(side){
+                case BUY -> {
+                    bids.computeIfAbsent(price, p -> new ArrayDeque<>()).addLast(order);
+                }
+
+                case SELL -> {
+                    asks.computeIfAbsent(price, p -> new ArrayDeque<>()).addLast(order);
+                }
             }
         }
 

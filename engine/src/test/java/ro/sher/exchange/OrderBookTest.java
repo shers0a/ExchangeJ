@@ -231,4 +231,88 @@ public class OrderBookTest{
         assertThrows(IllegalArgumentException.class,
         () -> orderBook.placeLimitOrder(2, "ana", BUY, 100, 0));
     }
+
+    @Test
+    public void cancelRemovesOrderFromBook(){
+        OrderBook orderBook = new OrderBook("ACME");
+
+        orderBook.placeLimitOrder(1, "ana", BUY, 100, 10);
+
+        assertEquals(1, orderBook.cancel(1).orElseThrow().getId());
+        assertTrue(orderBook.bestBid().isEmpty());
+    }
+
+    @Test
+    public void cancelLastOrderAtLevelMovesBestPriceToNextLevel(){
+        OrderBook orderBook = new OrderBook("ACME");
+
+        orderBook.placeLimitOrder(1, "bogdan", SELL, 100, 10);
+        orderBook.placeLimitOrder(2, "cristi", SELL, 101, 10);
+        orderBook.cancel(1);
+
+        assertEquals(OptionalLong.of(101), orderBook.bestAsk());
+    }
+
+    @Test
+    public void cancelKeepsOtherOrdersAtSameLevel(){
+        OrderBook orderBook = new OrderBook("ACME");
+
+        orderBook.placeLimitOrder(1, "bogdan", SELL, 100, 10);
+        orderBook.placeLimitOrder(2, "cristi", SELL, 100, 10);
+        orderBook.cancel(1);
+        List<Trade> trades = orderBook.placeLimitOrder(3, "ana", BUY, 100, 10);
+
+        assertEquals(List.of(new Trade(3, 2, 100, 10)), trades);
+    }
+
+    @Test
+    public void cancelUnknownOrderReturnsEmpty(){
+        OrderBook orderBook = new OrderBook("ACME");
+
+        assertTrue(orderBook.cancel(42).isEmpty());
+    }
+
+    @Test
+    public void cancelFullyFilledOrderReturnsEmpty(){
+        OrderBook orderBook = new OrderBook("ACME");
+
+        orderBook.placeLimitOrder(1, "bogdan", SELL, 100, 10);
+        orderBook.placeLimitOrder(2, "ana", BUY, 100, 10);
+
+        assertTrue(orderBook.cancel(1).isEmpty());
+        assertTrue(orderBook.cancel(2).isEmpty());
+    }
+
+    @Test
+    public void cancelPartiallyFilledOrderRemovesTheRest(){
+        OrderBook orderBook = new OrderBook("ACME");
+
+        orderBook.placeLimitOrder(1, "bogdan", SELL, 100, 100);
+        orderBook.placeLimitOrder(2, "ana", BUY, 100, 30);
+
+        assertEquals(70, orderBook.cancel(1).orElseThrow().getRemainingQuantity());
+        assertTrue(orderBook.bestAsk().isEmpty());
+    }
+
+    @Test
+    public void cancelledOrderDoesNotMatch(){
+        OrderBook orderBook = new OrderBook("ACME");
+
+        orderBook.placeLimitOrder(1, "ana", BUY, 100, 10);
+        orderBook.cancel(1);
+        List<Trade> trades = orderBook.placeLimitOrder(2, "bogdan", SELL, 100, 10);
+
+        assertTrue(trades.isEmpty());
+        assertEquals(OptionalLong.of(100), orderBook.bestAsk());
+    }
+
+    @Test
+    public void cancelSameOrderTwiceReturnsEmptySecondTime(){
+        OrderBook orderBook = new OrderBook("ACME");
+
+        orderBook.placeLimitOrder(1, "ana", BUY, 100, 10);
+
+        assertTrue(orderBook.cancel(1).isPresent());
+        assertTrue(orderBook.cancel(1).isEmpty());
+    }
 }

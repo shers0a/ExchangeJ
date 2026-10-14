@@ -8,12 +8,15 @@ import java.util.Map;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.function.BooleanSupplier;
+import java.util.HashMap;
+import java.util.Optional;
 
 public class OrderBook{
     private final TreeMap<Long, ArrayDeque<Order>> bids = new TreeMap<>(Comparator.reverseOrder());
     private final TreeMap<Long, ArrayDeque<Order>> asks = new TreeMap<>();
     private final String symbol;
     private long nextSequence = 0;
+    private final HashMap<Long, Order> ordersById = new HashMap<>();
 
     public OrderBook(String symbol){
         if(symbol == null || symbol.isBlank()){
@@ -29,6 +32,9 @@ public class OrderBook{
         var trades = matchEngine(order);
 
         if( order.getRemainingQuantity() != 0 ){
+            
+            ordersById.put(order.getId(), order);
+
             switch(side){
                 case BUY -> {
                     bids.computeIfAbsent(price, p -> new ArrayDeque<>()).addLast(order);
@@ -72,6 +78,7 @@ public class OrderBook{
 
             if(resting.getRemainingQuantity() == 0){
                 queue.pollFirst();
+                ordersById.remove(resting.getId());
 
                 if(queue.isEmpty()){
                     other.pollFirstEntry();
@@ -80,6 +87,28 @@ public class OrderBook{
         }
         
         return trades;
+    }
+
+    public Optional<Order> cancel(long orderId){
+        Order order = ordersById.remove(orderId);
+
+        if(order == null){
+            return Optional.empty();
+        }
+
+        TreeMap<Long, ArrayDeque<Order>> side = switch(order.getSide()){
+            case BUY -> bids;
+            case SELL -> asks;
+        };
+
+        ArrayDeque<Order> queue = side.get(order.getPrice());
+        queue.remove(order);
+
+        if(queue.isEmpty()){
+            side.remove(order.getPrice());
+        }
+
+        return Optional.of(order);
     }
 
     public OptionalLong bestBid(){

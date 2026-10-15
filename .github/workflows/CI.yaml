@@ -17,3 +17,6 @@ jobs:
           cache: maven
       - name: Build and test
         run: mvn --batch-mode verify
+      # only builds the image (nothing is pushed): a broken Dockerfile fails the build
+      - name: Build Docker image
+        run: docker build -t exchangej .

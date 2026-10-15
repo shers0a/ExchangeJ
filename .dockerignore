@@ -1,0 +1,5 @@
+# keep the build context small: build output, git history and local notes never go into the image
+**/target
+.git
+.github
+CLAUDE.md

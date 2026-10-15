@@ -1,0 +1,12 @@
+# docker compose up --build   (or: podman-compose up --build)
+# then open http://localhost:8080
+services:
+  exchange:
+    build: .
+    image: exchangej:latest
+    ports:
+      - "8080:8080"
+    environment:
+      # overrides exchange.symbols from application.yaml (Spring maps EXCHANGE_SYMBOLS to exchange.symbols)
+      EXCHANGE_SYMBOLS: ACME,GLOBEX,INITECH
+    restart: unless-stopped

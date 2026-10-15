@@ -332,6 +332,52 @@ public class OrderBookTest{
     }
 
     @Test
+    public void rejectsIdOfFullyFilledOrder(){
+        OrderBook orderBook = new OrderBook("ACME");
+
+        orderBook.placeLimitOrder(1, "bogdan", SELL, 100, 10);
+        orderBook.placeLimitOrder(2, "ana", BUY, 100, 10);
+
+        // order 1 is gone from the book, but its id is still taken: trades already point to it
+        assertThrows(IllegalArgumentException.class,
+        () -> orderBook.placeLimitOrder(1, "dan", SELL, 100, 5));
+        assertTrue(orderBook.bestAsk().isEmpty());
+    }
+
+    @Test
+    public void rejectsIdOfCancelledOrder(){
+        OrderBook orderBook = new OrderBook("ACME");
+
+        orderBook.placeLimitOrder(1, "ana", BUY, 100, 10);
+        orderBook.cancel(1);
+
+        assertThrows(IllegalArgumentException.class,
+        () -> orderBook.placeLimitOrder(1, "dan", BUY, 100, 5));
+        assertTrue(orderBook.bestBid().isEmpty());
+    }
+
+    @Test
+    public void rejectsIdOfMarketOrder(){
+        OrderBook orderBook = new OrderBook("ACME");
+
+        orderBook.placeMarketOrder(1, "ana", BUY, 10);
+
+        assertThrows(IllegalArgumentException.class,
+        () -> orderBook.placeLimitOrder(1, "dan", BUY, 100, 5));
+    }
+
+    @Test
+    public void invalidOrderDoesNotUseUpItsId(){
+        OrderBook orderBook = new OrderBook("ACME");
+
+        assertThrows(IllegalArgumentException.class,
+        () -> orderBook.placeLimitOrder(1, "ana", BUY, 0, 10));
+
+        orderBook.placeLimitOrder(1, "ana", BUY, 100, 10);
+        assertEquals(OptionalLong.of(100), orderBook.bestBid());
+    }
+
+    @Test
     public void marketBuySweepsAsksFromLowestPrice(){
         OrderBook orderBook = new OrderBook("ACME");
 

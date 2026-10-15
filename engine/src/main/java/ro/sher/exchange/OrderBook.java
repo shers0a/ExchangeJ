@@ -9,7 +9,9 @@ import java.util.List;
 import java.util.ArrayList;
 import java.util.function.BooleanSupplier;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
 
 public class OrderBook{
     private static final long MARKET_BUY_PRICE = Long.MAX_VALUE;
@@ -19,11 +21,14 @@ public class OrderBook{
     private final TreeMap<Long, ArrayDeque<Order>> asks = new TreeMap<>();
     private final String symbol;
     private long nextSequence = 0;
+    // only the orders resting in the book, so cancel can find them
     private final HashMap<Long, Order> ordersById = new HashMap<>();
+    // every id this book ever accepted (also filled, cancelled and market orders), so ids are never reused
+    private final Set<Long> usedIds = new HashSet<>();
 
     public OrderBook(String symbol){
         if(symbol == null || symbol.isBlank()){
-            throw new IllegalArgumentException("OrderBook symbol must non-null nor blank.");
+            throw new IllegalArgumentException("OrderBook symbol must not be null or blank.");
         }
 
         this.symbol = symbol;
@@ -32,6 +37,7 @@ public class OrderBook{
     public List<Trade> placeLimitOrder(long id, String traderId, Side side, long price, long quantity){
         requireUniqueId(id);
         Order order = new Order(price, symbol, side, quantity, nextSequence++, id, traderId);
+        usedIds.add(id);
 
         var trades = matchEngine(order);
 
@@ -56,13 +62,16 @@ public class OrderBook{
         requireUniqueId(id);
         long price = side == Side.BUY ? MARKET_BUY_PRICE : MARKET_SELL_PRICE;
         Order order = new Order(price, symbol, side, quantity, nextSequence++, id, traderId);
+        usedIds.add(id);
 
         return matchEngine(order);
     }
 
+    // called before the Order is built; the id is recorded only after the Order passed validation,
+    // so an invalid order does not use up its id
     private void requireUniqueId(long id){
-        if(ordersById.containsKey(id)){
-            throw new IllegalArgumentException("An order with this id already exists.");
+        if(usedIds.contains(id)){
+            throw new IllegalArgumentException("Order id " + id + " was already used in this book.");
         }
     }
 

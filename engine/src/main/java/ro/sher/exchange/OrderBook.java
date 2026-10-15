@@ -137,6 +137,38 @@ public class OrderBook{
         return Optional.of(order);
     }
 
+    public BookSnapshot snapshot(int depth){
+        if(depth <= 0){
+            throw new IllegalArgumentException("Snapshot depth must be strictly positive.");
+        }
+
+        return new BookSnapshot(symbol, levels(bids, depth), levels(asks, depth));
+    }
+
+    // a TreeMap iterates in the order of its comparator, so the first entries are the best prices
+    private static List<PriceLevel> levels(TreeMap<Long, ArrayDeque<Order>> side, int depth){
+        List<PriceLevel> levels = new ArrayList<>();
+
+        for(Map.Entry<Long, ArrayDeque<Order>> entry : side.entrySet()){
+            if(levels.size() == depth){
+                break;
+            }
+
+            long quantity = 0;
+            for(Order order : entry.getValue()){
+                quantity += order.getRemainingQuantity();
+            }
+
+            levels.add(new PriceLevel(entry.getKey(), quantity, entry.getValue().size()));
+        }
+
+        return levels;
+    }
+
+    public String getSymbol(){
+        return symbol;
+    }
+
     public OptionalLong bestBid(){
         Map.Entry<Long, ArrayDeque<Order>> entry = bids.firstEntry();
         

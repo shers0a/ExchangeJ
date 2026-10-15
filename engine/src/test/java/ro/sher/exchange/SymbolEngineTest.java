@@ -11,6 +11,7 @@ import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
@@ -99,5 +100,92 @@ public class SymbolEngineTest{
 
         // equal numbers of buys and sells at one price: every order must find a match exactly once
         assertEquals(threads / 2 * ordersPerThread, tradedQuantity);
+    }
+
+    @Test
+    public void snapshotIsReadThroughTheEngine(){
+        engine.submitLimit(1, "bogdan", SELL, 101, 10);
+        engine.submitLimit(2, "ana", BUY, 99, 5);
+
+        BookSnapshot snapshot = engine.submitSnapshot(5).join();
+
+        assertEquals(List.of(new PriceLevel(99, 5, 1)), snapshot.bids());
+        assertEquals(List.of(new PriceLevel(101, 10, 1)), snapshot.asks());
+    }
+
+    @Test
+    public void listenerGetsTradesAndBookInTheOrderTheyHappened() throws InterruptedException{
+        List<Object> events = new CopyOnWriteArrayList<>();
+        SymbolEngine recorded = new SymbolEngine("ACME", recordingListener(events));
+        recorded.start();
+        try{
+            recorded.submitLimit(1, "bogdan", SELL, 100, 10);
+            recorded.submitLimit(2, "ana", BUY, 100, 4);
+            // commands run one by one: when this snapshot is done, the listener calls before it are done too
+            recorded.submitSnapshot(1).join();
+
+            assertEquals(List.of(
+                new BookSnapshot("ACME", List.of(), List.of(new PriceLevel(100, 10, 1))),
+                List.of(new Trade(2, 1, 100, 4)),
+                new BookSnapshot("ACME", List.of(), List.of(new PriceLevel(100, 6, 1)))
+            ), events);
+        }finally{
+            recorded.stop();
+        }
+    }
+
+    @Test
+    public void cancelPublishesBookOnlyWhenAnOrderWasCancelled() throws InterruptedException{
+        List<Object> events = new CopyOnWriteArrayList<>();
+        SymbolEngine recorded = new SymbolEngine("ACME", recordingListener(events));
+        recorded.start();
+        try{
+            recorded.submitLimit(1, "ana", BUY, 100, 10);
+            recorded.submitCancel(1);
+            recorded.submitCancel(99);
+            recorded.submitSnapshot(1).join();
+
+            assertEquals(List.of(
+                new BookSnapshot("ACME", List.of(new PriceLevel(100, 10, 1)), List.of()),
+                new BookSnapshot("ACME", List.of(), List.of())
+            ), events);
+        }finally{
+            recorded.stop();
+        }
+    }
+
+    @Test
+    public void failingListenerDoesNotFailOrdersOrStopTheEngine() throws InterruptedException{
+        MarketDataListener broken = new MarketDataListener(){
+            @Override
+            public void onBook(BookSnapshot snapshot){
+                throw new IllegalStateException("listener is broken");
+            }
+        };
+        SymbolEngine withBrokenListener = new SymbolEngine("ACME", broken);
+        withBrokenListener.start();
+        try{
+            withBrokenListener.submitLimit(1, "bogdan", SELL, 100, 10).join();
+            List<Trade> trades = withBrokenListener.submitLimit(2, "ana", BUY, 100, 10).join();
+
+            assertEquals(List.of(new Trade(2, 1, 100, 10)), trades);
+            assertTrue(withBrokenListener.submitSnapshot(1).join().asks().isEmpty());
+        }finally{
+            withBrokenListener.stop();
+        }
+    }
+
+    private static MarketDataListener recordingListener(List<Object> events){
+        return new MarketDataListener(){
+            @Override
+            public void onTrades(String symbol, List<Trade> trades){
+                events.add(trades);
+            }
+
+            @Override
+            public void onBook(BookSnapshot snapshot){
+                events.add(snapshot);
+            }
+        };
     }
 }

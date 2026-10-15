@@ -445,4 +445,55 @@ public class OrderBookTest{
         () -> orderBook.placeMarketOrder(1, "ana", BUY, 10));
         assertEquals(OptionalLong.of(100), orderBook.bestAsk());
     }
+
+    @Test
+    public void snapshotOfEmptyBookHasNoLevels(){
+        OrderBook orderBook = new OrderBook("ACME");
+
+        assertEquals(new BookSnapshot("ACME", List.of(), List.of()), orderBook.snapshot(5));
+    }
+
+    @Test
+    public void snapshotSumsQuantityPerLevelAndSortsBestFirst(){
+        OrderBook orderBook = new OrderBook("ACME");
+
+        orderBook.placeLimitOrder(1, "ana", BUY, 99, 10);
+        orderBook.placeLimitOrder(2, "dan", BUY, 100, 20);
+        orderBook.placeLimitOrder(3, "eva", BUY, 100, 5);
+        orderBook.placeLimitOrder(4, "bogdan", SELL, 102, 7);
+        orderBook.placeLimitOrder(5, "cristi", SELL, 101, 3);
+
+        BookSnapshot snapshot = orderBook.snapshot(5);
+
+        assertEquals(List.of(new PriceLevel(100, 25, 2), new PriceLevel(99, 10, 1)), snapshot.bids());
+        assertEquals(List.of(new PriceLevel(101, 3, 1), new PriceLevel(102, 7, 1)), snapshot.asks());
+    }
+
+    @Test
+    public void snapshotShowsRemainingQuantityAfterPartialFill(){
+        OrderBook orderBook = new OrderBook("ACME");
+
+        orderBook.placeLimitOrder(1, "bogdan", SELL, 100, 50);
+        orderBook.placeLimitOrder(2, "ana", BUY, 100, 20);
+
+        assertEquals(List.of(new PriceLevel(100, 30, 1)), orderBook.snapshot(5).asks());
+    }
+
+    @Test
+    public void snapshotKeepsOnlyTheBestLevels(){
+        OrderBook orderBook = new OrderBook("ACME");
+
+        orderBook.placeLimitOrder(1, "a", SELL, 103, 1);
+        orderBook.placeLimitOrder(2, "b", SELL, 101, 1);
+        orderBook.placeLimitOrder(3, "c", SELL, 102, 1);
+
+        assertEquals(List.of(new PriceLevel(101, 1, 1), new PriceLevel(102, 1, 1)), orderBook.snapshot(2).asks());
+    }
+
+    @Test
+    public void snapshotRejectsNonPositiveDepth(){
+        OrderBook orderBook = new OrderBook("ACME");
+
+        assertThrows(IllegalArgumentException.class, () -> orderBook.snapshot(0));
+    }
 }

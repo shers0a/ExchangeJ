@@ -1,0 +1,6 @@
+exchange:
+  symbols: [ACME, GLOBEX, INITECH]
+
+spring:
+  application:
+    name: exchangej

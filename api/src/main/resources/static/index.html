@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ExchangeJ</title>
+<style>
+  :root { --bg: #0f1419; --panel: #182029; --text: #e6edf3; --muted: #8b98a5; --buy: #2ea043; --sell: #f85149; --line: #2a3541; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.4 system-ui, sans-serif; background: var(--bg); color: var(--text); }
+  header { display: flex; gap: 16px; align-items: center; padding: 14px 20px; border-bottom: 1px solid var(--line); }
+  h1 { font-size: 18px; margin: 0; }
+  main { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; padding: 16px 20px; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 0 0 10px; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  td, th { padding: 3px 4px; text-align: right; }
+  th { color: var(--muted); font-weight: 500; }
+  .ask td:first-child { color: var(--sell); }
+  .bid td:first-child { color: var(--buy); }
+  .spread td { color: var(--muted); text-align: center; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+  label { display: grid; gap: 3px; color: var(--muted); font-size: 12px; min-width: 0; }
+  input, select, button { font: inherit; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+  form input, form select { width: 100%; min-width: 0; }
+  button { grid-column: span 2; background: #1f6feb; border: none; cursor: pointer; }
+  #status { color: var(--muted); font-size: 12px; }
+  #message { grid-column: span 2; min-height: 1.4em; font-size: 12px; color: var(--muted); }
+  #trades li { list-style: none; display: flex; justify-content: space-between; padding: 2px 0; font-variant-numeric: tabular-nums; }
+  #trades { margin: 0; padding: 0; max-height: 360px; overflow: auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ExchangeJ</h1>
+  <select id="symbol" aria-label="Symbol"></select>
+  <span id="status">connecting…</span>
+</header>
+<main>
+  <section>
+    <h2>Order book</h2>
+    <table>
+      <thead><tr><th>Price</th><th>Quantity</th><th>Orders</th></tr></thead>
+      <tbody id="book"></tbody>
+    </table>
+  </section>
+  <section>
+    <h2>Trades</h2>
+    <ul id="trades"></ul>
+  </section>
+  <section>
+    <h2>Place order</h2>
+    <form id="order">
+      <label>Trader <input name="traderId" value="demo" required></label>
+      <label>Side <select name="side"><option>BUY</option><option>SELL</option></select></label>
+      <label>Type <select name="type"><option>LIMIT</option><option>MARKET</option></select></label>
+      <label>Price <input name="price" type="number" step="0.01" min="0.01" value="101.50"></label>
+      <label>Quantity <input name="quantity" type="number" min="1" value="10" required></label>
+      <label>&nbsp;<span></span></label>
+      <button type="submit">Send</button>
+      <div id="message"></div>
+    </form>
+  </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7.1.1/bundles/stomp.umd.min.js"></script>
+<script>
+  // the engine stores prices as whole ticks (cents); they become decimals only here, for display
+  const toDecimal = ticks => (ticks / 100).toFixed(2);
+  const toTicks = decimal => Math.round(Number(decimal) * 100);
+
+  const symbolSelect = document.getElementById('symbol');
+  const bookBody = document.getElementById('book');
+  const tradesList = document.getElementById('trades');
+  const message = document.getElementById('message');
+  let subscriptions = [];
+
+  const client = new StompJs.Client({ brokerURL: `ws://${location.host}/ws`, reconnectDelay: 2000 });
+  client.onConnect = () => { document.getElementById('status').textContent = 'live'; watch(symbolSelect.value); };
+  client.onWebSocketClose = () => { document.getElementById('status').textContent = 'disconnected, retrying…'; };
+
+  // the current book comes from REST right away; the WebSocket only keeps it up to date
+  function loadBook(symbol) {
+    fetch(`/api/symbols/${symbol}/book`).then(r => r.json()).then(renderBook);
+  }
+
+  function watch(symbol) {
+    subscriptions.forEach(s => s.unsubscribe());
+    subscriptions = [];
+    tradesList.innerHTML = '';
+    loadBook(symbol);
+    if (!client.connected) return;
+    subscriptions = [
+      client.subscribe(`/topic/book/${symbol}`, frame => renderBook(JSON.parse(frame.body))),
+      client.subscribe(`/topic/trades/${symbol}`, frame => JSON.parse(frame.body).forEach(addTrade)),
+    ];
+  }
+
+  function renderBook(book) {
+    const row = (cls, level) => `<tr class="${cls}"><td>${toDecimal(level.price)}</td><td>${level.quantity}</td><td>${level.orders}</td></tr>`;
+    const asks = [...book.asks].reverse().map(l => row('ask', l)).join('');
+    const bids = book.bids.map(l => row('bid', l)).join('');
+    const spread = book.asks.length && book.bids.length ? toDecimal(book.asks[0].price - book.bids[0].price) : '–';
+    bookBody.innerHTML = asks + `<tr class="spread"><td colspan="3">spread ${spread}</td></tr>` + bids;
+  }
+
+  function addTrade(trade) {
+    const item = document.createElement('li');
+    item.innerHTML = `<span>${trade.quantity} @ ${toDecimal(trade.price)}</span><span>#${trade.buyOrderId} ← #${trade.sellOrderId}</span>`;
+    tradesList.prepend(item);
+  }
+
+  document.getElementById('order').addEventListener('submit', async event => {
+    event.preventDefault();
+    const form = Object.fromEntries(new FormData(event.target));
+    const body = { traderId: form.traderId, side: form.side, type: form.type, quantity: Number(form.quantity) };
+    if (form.type === 'LIMIT') body.price = toTicks(form.price);
+    const response = await fetch(`/api/symbols/${symbolSelect.value}/orders`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const result = await response.json();
+    message.textContent = response.ok
+      ? `order #${result.orderId}: ${result.trades.length} trade(s)`
+      : `rejected: ${result.detail ?? result.title}`;
+  });
+
+  symbolSelect.addEventListener('change', () => watch(symbolSelect.value));
+
+  fetch('/api/symbols').then(r => r.json()).then(symbols => {
+    symbolSelect.innerHTML = symbols.map(s => `<option>${s}</option>`).join('');
+    loadBook(symbolSelect.value);
+    client.activate();
+  });
+</script>
+</body>
+</html>
